@@ -1,7 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useRef, useState } from "react";
-import { Download, Eraser, ImagePlus, Loader2, RotateCcw, Undo2, Wand2 } from "lucide-react";
+import {
+  Brush,
+  Download,
+  Eraser,
+  ImagePlus,
+  Loader2,
+  MousePointerClick,
+  RotateCcw,
+  Sparkles,
+  Undo2,
+  Wand2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +46,8 @@ function Index() {
   const [src, setSrc] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [brush, setBrush] = useState(38);
+  const [mode, setMode] = useState<"brush" | "tap">("tap");
+  const [tolerance, setTolerance] = useState(35);
   const [hasStrokes, setHasStrokes] = useState(false);
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);

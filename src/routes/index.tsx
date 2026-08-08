@@ -83,7 +83,7 @@ function Index() {
   const undo = () => {
     setHistory((h) => {
       if (!h.length) return h;
-      setSrc(h[h.length - 1]);
+      setSrc(h[h.length - 1] ?? null);
       setHasStrokes(false);
       return h.slice(0, -1);
     });
@@ -172,7 +172,7 @@ function Index() {
                 min={8}
                 max={110}
                 step={1}
-                onValueChange={(v) => setBrush(v[0])}
+                onValueChange={(v) => setBrush(v[0] ?? brush)}
               />
               <p className="mt-3 text-xs text-muted-foreground">
                 Cover the whole object plus a little of its shadow for the cleanest result.

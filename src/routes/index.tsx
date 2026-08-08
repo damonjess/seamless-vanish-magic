@@ -203,24 +203,27 @@ function Index() {
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">
-                      <Sparkles className="size-4 text-primary" /> Snap sensitivity
+                      <Sparkles className="size-4 text-primary" /> Targets placed
                     </span>
-                    <span className="text-muted-foreground">{tolerance}</span>
+                    <span className="text-muted-foreground">{selection.points}</span>
                   </div>
-                  <Slider
-                    className="mt-4"
-                    value={[tolerance]}
-                    min={5}
-                    max={100}
-                    step={1}
-                    onValueChange={(v) => setTolerance(v[0] ?? tolerance)}
-                  />
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Tap an object and the selection snaps to its edges. Tap again on any missed
-                    part, or raise sensitivity to grab more.
+                    Tap the middle of an object — the AI works out its exact outline and shadow, then
+                    removes the whole thing. Tap more objects to remove several at once.
                   </p>
+                  {selection.points > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => apiRef.current?.undoPoint()}
+                    >
+                      <Undo2 className="size-4" /> Remove last target
+                    </Button>
+                  )}
                 </>
               ) : (
+
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">

@@ -67,23 +67,27 @@ function Index() {
     reader.onload = () => {
       setSrc(String(reader.result));
       setHistory([]);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
     };
     reader.readAsDataURL(file);
   };
 
   const erase = async () => {
     const pair = apiRef.current?.exportPair();
-    if (!pair || !hasStrokes) {
-      toast.error("Brush over what you want removed first.");
+    if (!pair || (!selection.hasPaint && selection.points === 0)) {
+      toast.error(
+        mode === "tap" ? "Tap an object to remove first." : "Brush over what you want removed first.",
+      );
       return;
     }
     setBusy(true);
     try {
-      const result = await run({ data: pair });
+      const result = await run({
+        data: { ...pair, points: selection.points, hasPaint: selection.hasPaint },
+      });
       setHistory((h) => (src ? [...h, src] : h));
       setSrc(result.image);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
       toast.success("Gone without a trace.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Something went wrong.");
@@ -96,7 +100,7 @@ function Index() {
     setHistory((h) => {
       if (!h.length) return h;
       setSrc(h[h.length - 1] ?? null);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
       return h.slice(0, -1);
     });
   };
@@ -248,10 +252,10 @@ function Index() {
 
             <div className="grid grid-cols-2 gap-3">
               <Button size="lg" className="col-span-2 shadow-glow" disabled={busy} onClick={erase}>
-                <Wand2 className="size-4" /> Remove painted objects
+                <Wand2 className="size-4" /> Remove selected objects
               </Button>
               <Button variant="secondary" onClick={() => apiRef.current?.clear()} disabled={busy}>
-                <RotateCcw className="size-4" /> Clear brush
+                <RotateCcw className="size-4" /> Clear selection
               </Button>
               <Button variant="secondary" onClick={undo} disabled={busy || !history.length}>
                 <Undo2 className="size-4" /> Undo removal

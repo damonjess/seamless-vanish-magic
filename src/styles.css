@@ -151,3 +151,15 @@
     color: var(--color-foreground);
   }
 }
+
+@layer utilities {
+  .bg-studio {
+    background-image: var(--gradient-studio);
+  }
+  .shadow-panel {
+    box-shadow: var(--shadow-panel);
+  }
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+}

@@ -160,24 +160,73 @@ function Index() {
             </div>
 
             <div className="rounded-3xl border border-border bg-card/70 p-5">
-              <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 font-medium text-foreground">
-                  <Eraser className="size-4 text-primary" /> Brush size
-                </span>
-                <span className="text-muted-foreground">{brush}px</span>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-secondary p-1">
+                <button
+                  onClick={() => setMode("tap")}
+                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                    mode === "tap"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <MousePointerClick className="size-4" /> Tap to remove
+                </button>
+                <button
+                  onClick={() => setMode("brush")}
+                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                    mode === "brush"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Brush className="size-4" /> Brush
+                </button>
               </div>
-              <Slider
-                className="mt-4"
-                value={[brush]}
-                min={8}
-                max={110}
-                step={1}
-                onValueChange={(v) => setBrush(v[0] ?? brush)}
-              />
-              <p className="mt-3 text-xs text-muted-foreground">
-                Cover the whole object plus a little of its shadow for the cleanest result.
-              </p>
+
+              {mode === "tap" ? (
+                <>
+                  <div className="mt-5 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 font-medium text-foreground">
+                      <Sparkles className="size-4 text-primary" /> Snap sensitivity
+                    </span>
+                    <span className="text-muted-foreground">{tolerance}</span>
+                  </div>
+                  <Slider
+                    className="mt-4"
+                    value={[tolerance]}
+                    min={5}
+                    max={100}
+                    step={1}
+                    onValueChange={(v) => setTolerance(v[0] ?? tolerance)}
+                  />
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Tap an object and the selection snaps to its edges. Tap again on any missed
+                    part, or raise sensitivity to grab more.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 font-medium text-foreground">
+                      <Eraser className="size-4 text-primary" /> Brush size
+                    </span>
+                    <span className="text-muted-foreground">{brush}px</span>
+                  </div>
+                  <Slider
+                    className="mt-4"
+                    value={[brush]}
+                    min={8}
+                    max={110}
+                    step={1}
+                    onValueChange={(v) => setBrush(v[0] ?? brush)}
+                  />
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Cover the whole object plus a little of its shadow for the cleanest result.
+                  </p>
+                </>
+              )}
             </div>
+
 
             <div className="grid grid-cols-2 gap-3">
               <Button size="lg" className="col-span-2 shadow-glow" disabled={busy} onClick={erase}>

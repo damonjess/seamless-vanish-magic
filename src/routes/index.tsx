@@ -160,9 +160,12 @@ function Index() {
                 <MaskCanvas
                   src={src}
                   brush={brush}
+                  mode={mode}
+                  tolerance={tolerance}
                   onStrokesChange={setHasStrokes}
                   registerApi={registerApi}
                 />
+
                 {busy && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-background/70 backdrop-blur-sm">
                     <Loader2 className="size-7 animate-spin text-primary" />

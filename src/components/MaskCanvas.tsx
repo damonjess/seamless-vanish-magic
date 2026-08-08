@@ -4,41 +4,62 @@ type Props = {
   src: string;
   brush: number;
   mode: "brush" | "tap";
-  /** 0-100 snap sensitivity used in tap mode */
-  tolerance: number;
-  onStrokesChange: (hasStrokes: boolean) => void;
+  onSelectionChange: (state: { hasPaint: boolean; points: number }) => void;
   registerApi: (api: MaskApi | null) => void;
 };
 
 export type MaskApi = {
   clear: () => void;
-  /** Original image data URL and a copy with magenta paint over the mask */
+  undoPoint: () => void;
+  /** Original image plus a copy annotated with paint strokes / target markers */
   exportPair: () => { image: string; marked: string } | null;
 };
 
 const PAINT = "rgba(255, 0, 200, 0.62)";
+const MARK = "rgb(255, 0, 200)";
 
-export function MaskCanvas({
-  src,
-  brush,
-  mode,
-  tolerance,
-  onStrokesChange,
-  registerApi,
-}: Props) {
+export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }: Props) {
   const baseRef = useRef<HTMLCanvasElement | null>(null);
   const maskRef = useRef<HTMLCanvasElement | null>(null);
-  const baseData = useRef<ImageData | null>(null);
+  const strokes = useRef<HTMLCanvasElement | null>(null);
+  const points = useRef<{ x: number; y: number }[]>([]);
+  const hasPaint = useRef(false);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
-  const painted = useRef(false);
 
-  const markPainted = useCallback(() => {
-    if (!painted.current) {
-      painted.current = true;
-      onStrokesChange(true);
-    }
-  }, [onStrokesChange]);
+  const notify = useCallback(() => {
+    onSelectionChange({ hasPaint: hasPaint.current, points: points.current.length });
+  }, [onSelectionChange]);
+
+  /** Re-render markers on top of the paint layer */
+  const repaint = useCallback(() => {
+    const mask = maskRef.current;
+    const paint = strokes.current;
+    const ctx = mask?.getContext("2d");
+    if (!mask || !paint || !ctx) return;
+    ctx.clearRect(0, 0, mask.width, mask.height);
+    ctx.drawImage(paint, 0, 0);
+
+    const unit = Math.max(mask.width, mask.height) / 100;
+    points.current.forEach((p, i) => {
+      const r = unit * 2.4;
+      ctx.save();
+      ctx.lineWidth = unit * 0.55;
+      ctx.strokeStyle = MARK;
+      ctx.fillStyle = MARK;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, unit * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = `bold ${unit * 2.6}px sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), p.x + r + unit * 0.6, p.y);
+      ctx.restore();
+    });
+  }, []);
 
   useEffect(() => {
     const img = new Image();
@@ -48,28 +69,36 @@ export function MaskCanvas({
       const scale = Math.min(1, max / Math.max(img.width, img.height));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
-      for (const c of [baseRef.current, maskRef.current]) {
+      if (!strokes.current) strokes.current = document.createElement("canvas");
+      for (const c of [baseRef.current, maskRef.current, strokes.current]) {
         if (!c) continue;
         c.width = w;
         c.height = h;
       }
-      const ctx = baseRef.current?.getContext("2d");
-      ctx?.drawImage(img, 0, 0, w, h);
-      baseData.current = ctx?.getImageData(0, 0, w, h) ?? null;
-      painted.current = false;
-      onStrokesChange(false);
+      baseRef.current?.getContext("2d")?.drawImage(img, 0, 0, w, h);
+      strokes.current.getContext("2d")?.clearRect(0, 0, w, h);
+      points.current = [];
+      hasPaint.current = false;
+      repaint();
+      notify();
     };
     img.src = src;
-  }, [src, onStrokesChange]);
+  }, [src, repaint, notify]);
 
   useEffect(() => {
     const api: MaskApi = {
       clear: () => {
-        const c = maskRef.current;
-        if (!c) return;
-        c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
-        painted.current = false;
-        onStrokesChange(false);
+        const paint = strokes.current;
+        if (paint) paint.getContext("2d")?.clearRect(0, 0, paint.width, paint.height);
+        points.current = [];
+        hasPaint.current = false;
+        repaint();
+        notify();
+      },
+      undoPoint: () => {
+        points.current = points.current.slice(0, -1);
+        repaint();
+        notify();
       },
       exportPair: () => {
         const base = baseRef.current;
@@ -90,7 +119,7 @@ export function MaskCanvas({
     };
     registerApi(api);
     return () => registerApi(null);
-  }, [registerApi, onStrokesChange]);
+  }, [registerApi, repaint, notify]);
 
   const pos = (e: React.PointerEvent) => {
     const c = maskRef.current!;
@@ -103,12 +132,12 @@ export function MaskCanvas({
 
   const stroke = (from: { x: number; y: number }, to: { x: number; y: number }) => {
     const c = maskRef.current;
-    const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
+    const paint = strokes.current;
+    const ctx = paint?.getContext("2d");
+    if (!c || !paint || !ctx) return;
     const r = c.getBoundingClientRect();
     const size = (brush / r.width) * c.width;
     ctx.strokeStyle = PAINT;
-    ctx.fillStyle = PAINT;
     ctx.lineWidth = size;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -116,100 +145,11 @@ export function MaskCanvas({
     ctx.moveTo(from.x, from.y);
     ctx.lineTo(to.x, to.y);
     ctx.stroke();
-    markPainted();
-  };
-
-  /** Magic-wand style snap: flood fill the region under the tap, then feather it out. */
-  const snapAt = (pt: { x: number; y: number }) => {
-    const data = baseData.current;
-    const mask = maskRef.current;
-    const mctx = mask?.getContext("2d");
-    if (!data || !mask || !mctx) return;
-
-    const w = data.width;
-    const h = data.height;
-    const sx = Math.min(w - 1, Math.max(0, Math.round(pt.x)));
-    const sy = Math.min(h - 1, Math.max(0, Math.round(pt.y)));
-    const px = data.data;
-    const start = (sy * w + sx) * 4;
-    const tr = px[start]!;
-    const tg = px[start + 1]!;
-    const tb = px[start + 2]!;
-    // tolerance 0-100 -> squared RGB distance threshold
-    const t = 12 + (tolerance / 100) * 90;
-    const limit = t * t * 3;
-
-    const visited = new Uint8Array(w * h);
-    const queue = new Int32Array(w * h);
-    let head = 0;
-    let tail = 0;
-    queue[tail++] = sy * w + sx;
-    visited[sy * w + sx] = 1;
-
-    let minX = sx;
-    let maxX = sx;
-    let minY = sy;
-    let maxY = sy;
-    let count = 0;
-    const maxPixels = w * h * 0.55;
-
-    while (head < tail) {
-      const idx = queue[head++]!;
-      count++;
-      if (count > maxPixels) break;
-      const y = (idx / w) | 0;
-      const x = idx - y * w;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-
-      const neighbours = [
-        x > 0 ? idx - 1 : -1,
-        x < w - 1 ? idx + 1 : -1,
-        y > 0 ? idx - w : -1,
-        y < h - 1 ? idx + w : -1,
-      ];
-      for (const n of neighbours) {
-        if (n < 0 || visited[n]) continue;
-        const o = n * 4;
-        const dr = px[o]! - tr;
-        const dg = px[o + 1]! - tg;
-        const db = px[o + 2]! - tb;
-        if (dr * dr + dg * dg + db * db <= limit) {
-          visited[n] = 1;
-          queue[tail++] = n;
-        }
-      }
+    if (!hasPaint.current) {
+      hasPaint.current = true;
+      notify();
     }
-
-    // Render the selection into a temp canvas, then blot it in with a soft blur
-    // so the edges of the object (and its halo) are fully covered.
-    const temp = document.createElement("canvas");
-    temp.width = w;
-    temp.height = h;
-    const tctx = temp.getContext("2d");
-    if (!tctx) return;
-    const out = tctx.createImageData(w, h);
-    const od = out.data;
-    for (let i = 0; i < visited.length; i++) {
-      if (!visited[i]) continue;
-      const o = i * 4;
-      od[o] = 255;
-      od[o + 1] = 0;
-      od[o + 2] = 200;
-      od[o + 3] = 255;
-    }
-    tctx.putImageData(out, 0, 0);
-
-    const grow = Math.max(2, Math.round(Math.max(w, h) * 0.006));
-    mctx.save();
-    mctx.globalAlpha = 0.62;
-    mctx.filter = `blur(${grow}px)`;
-    // draw a few times so the blurred (semi-transparent) edge becomes solid
-    for (let i = 0; i < 3; i++) mctx.drawImage(temp, 0, 0);
-    mctx.restore();
-    markPainted();
+    repaint();
   };
 
   return (
@@ -223,7 +163,9 @@ export function MaskCanvas({
         onPointerDown={(e) => {
           const p = pos(e);
           if (mode === "tap") {
-            snapAt(p);
+            points.current = [...points.current, p];
+            repaint();
+            notify();
             return;
           }
           e.currentTarget.setPointerCapture(e.pointerId);

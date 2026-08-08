@@ -47,8 +47,7 @@ function Index() {
   const [history, setHistory] = useState<string[]>([]);
   const [brush, setBrush] = useState(38);
   const [mode, setMode] = useState<"brush" | "tap">("tap");
-  const [tolerance, setTolerance] = useState(35);
-  const [hasStrokes, setHasStrokes] = useState(false);
+  const [selection, setSelection] = useState({ hasPaint: false, points: 0 });
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -68,23 +67,27 @@ function Index() {
     reader.onload = () => {
       setSrc(String(reader.result));
       setHistory([]);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
     };
     reader.readAsDataURL(file);
   };
 
   const erase = async () => {
     const pair = apiRef.current?.exportPair();
-    if (!pair || !hasStrokes) {
-      toast.error("Brush over what you want removed first.");
+    if (!pair || (!selection.hasPaint && selection.points === 0)) {
+      toast.error(
+        mode === "tap" ? "Tap an object to remove first." : "Brush over what you want removed first.",
+      );
       return;
     }
     setBusy(true);
     try {
-      const result = await run({ data: pair });
+      const result = await run({
+        data: { ...pair, points: selection.points, hasPaint: selection.hasPaint },
+      });
       setHistory((h) => (src ? [...h, src] : h));
       setSrc(result.image);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
       toast.success("Gone without a trace.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Something went wrong.");
@@ -97,7 +100,7 @@ function Index() {
     setHistory((h) => {
       if (!h.length) return h;
       setSrc(h[h.length - 1] ?? null);
-      setHasStrokes(false);
+      setSelection({ hasPaint: false, points: 0 });
       return h.slice(0, -1);
     });
   };
@@ -161,10 +164,10 @@ function Index() {
                   src={src}
                   brush={brush}
                   mode={mode}
-                  tolerance={tolerance}
-                  onStrokesChange={setHasStrokes}
+                  onSelectionChange={setSelection}
                   registerApi={registerApi}
                 />
+
 
                 {busy && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-background/70 backdrop-blur-sm">
@@ -203,24 +206,27 @@ function Index() {
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">
-                      <Sparkles className="size-4 text-primary" /> Snap sensitivity
+                      <Sparkles className="size-4 text-primary" /> Targets placed
                     </span>
-                    <span className="text-muted-foreground">{tolerance}</span>
+                    <span className="text-muted-foreground">{selection.points}</span>
                   </div>
-                  <Slider
-                    className="mt-4"
-                    value={[tolerance]}
-                    min={5}
-                    max={100}
-                    step={1}
-                    onValueChange={(v) => setTolerance(v[0] ?? tolerance)}
-                  />
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Tap an object and the selection snaps to its edges. Tap again on any missed
-                    part, or raise sensitivity to grab more.
+                    Tap the middle of an object — the AI works out its exact outline and shadow, then
+                    removes the whole thing. Tap more objects to remove several at once.
                   </p>
+                  {selection.points > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => apiRef.current?.undoPoint()}
+                    >
+                      <Undo2 className="size-4" /> Remove last target
+                    </Button>
+                  )}
                 </>
               ) : (
+
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">
@@ -246,10 +252,10 @@ function Index() {
 
             <div className="grid grid-cols-2 gap-3">
               <Button size="lg" className="col-span-2 shadow-glow" disabled={busy} onClick={erase}>
-                <Wand2 className="size-4" /> Remove painted objects
+                <Wand2 className="size-4" /> Remove selected objects
               </Button>
               <Button variant="secondary" onClick={() => apiRef.current?.clear()} disabled={busy}>
-                <RotateCcw className="size-4" /> Clear brush
+                <RotateCcw className="size-4" /> Clear selection
               </Button>
               <Button variant="secondary" onClick={undo} disabled={busy || !history.length}>
                 <Undo2 className="size-4" /> Undo removal

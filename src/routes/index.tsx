@@ -47,8 +47,7 @@ function Index() {
   const [history, setHistory] = useState<string[]>([]);
   const [brush, setBrush] = useState(38);
   const [mode, setMode] = useState<"brush" | "tap">("tap");
-  const [tolerance, setTolerance] = useState(35);
-  const [hasStrokes, setHasStrokes] = useState(false);
+  const [selection, setSelection] = useState({ hasPaint: false, points: 0 });
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -161,10 +160,10 @@ function Index() {
                   src={src}
                   brush={brush}
                   mode={mode}
-                  tolerance={tolerance}
-                  onStrokesChange={setHasStrokes}
+                  onSelectionChange={setSelection}
                   registerApi={registerApi}
                 />
+
 
                 {busy && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-background/70 backdrop-blur-sm">

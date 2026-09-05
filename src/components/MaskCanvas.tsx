@@ -60,7 +60,39 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
       ctx.fillText(String(i + 1), p.x + r + unit * 0.6, p.y);
       ctx.restore();
     });
+
+    if (lasso.current.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = MARK;
+      ctx.lineWidth = unit * 0.4;
+      ctx.setLineDash([unit * 1.2, unit * 0.9]);
+      ctx.beginPath();
+      lasso.current.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.restore();
+    }
   }, []);
+
+  const fillLasso = useCallback(() => {
+    const pts = lasso.current;
+    lasso.current = [];
+    const paint = strokes.current;
+    const ctx = paint?.getContext("2d");
+    if (!paint || !ctx || pts.length < 3) {
+      repaint();
+      return;
+    }
+    ctx.save();
+    ctx.fillStyle = PAINT;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (!hasPaint.current) hasPaint.current = true;
+    repaint();
+    notify();
+  }, [repaint, notify]);
 
   useEffect(() => {
     const img = new Image();

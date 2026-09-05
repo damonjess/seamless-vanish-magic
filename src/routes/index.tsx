@@ -6,6 +6,7 @@ import {
   Download,
   Eraser,
   ImagePlus,
+  Lasso,
   Loader2,
   MousePointerClick,
   RotateCcw,
@@ -46,7 +47,7 @@ function Index() {
   const [src, setSrc] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [brush, setBrush] = useState(38);
-  const [mode, setMode] = useState<"brush" | "tap">("tap");
+  const [mode, setMode] = useState<"brush" | "tap" | "lasso">("tap");
   const [selection, setSelection] = useState({ hasPaint: false, points: 0 });
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);
@@ -76,7 +77,11 @@ function Index() {
     const pair = apiRef.current?.exportPair();
     if (!pair || (!selection.hasPaint && selection.points === 0)) {
       toast.error(
-        mode === "tap" ? "Tap an object to remove first." : "Brush over what you want removed first.",
+        mode === "tap"
+          ? "Tap an object to remove first."
+          : mode === "lasso"
+            ? "Draw a loop around what you want removed first."
+            : "Brush over what you want removed first.",
       );
       return;
     }
@@ -179,27 +184,26 @@ function Index() {
             </div>
 
             <div className="rounded-3xl border border-border bg-card/70 p-5">
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-secondary p-1">
-                <button
-                  onClick={() => setMode("tap")}
-                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    mode === "tap"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <MousePointerClick className="size-4" /> Tap to remove
-                </button>
-                <button
-                  onClick={() => setMode("brush")}
-                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    mode === "brush"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Brush className="size-4" /> Brush
-                </button>
+              <div className="grid grid-cols-3 gap-2 rounded-2xl bg-secondary p-1">
+                {(
+                  [
+                    { id: "tap", label: "Tap", Icon: MousePointerClick },
+                    { id: "brush", label: "Brush", Icon: Brush },
+                    { id: "lasso", label: "Lasso", Icon: Lasso },
+                  ] as const
+                ).map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setMode(id)}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm font-medium transition-colors ${
+                      mode === id
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="size-4" /> {label}
+                  </button>
+                ))}
               </div>
 
               {mode === "tap" ? (
@@ -225,8 +229,7 @@ function Index() {
                     </Button>
                   )}
                 </>
-              ) : (
-
+              ) : mode === "brush" ? (
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">
@@ -244,6 +247,16 @@ function Index() {
                   />
                   <p className="mt-3 text-xs text-muted-foreground">
                     Cover the whole object plus a little of its shadow for the cleanest result.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Lasso className="size-4 text-primary" /> Lasso select
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Draw a loop around the object with one continuous drag. Let go and the shape
+                    fills in — perfect for big or awkward areas.
                   </p>
                 </>
               )}

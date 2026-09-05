@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 type Props = {
   src: string;
   brush: number;
-  mode: "brush" | "tap";
+  mode: "brush" | "tap" | "lasso";
   onSelectionChange: (state: { hasPaint: boolean; points: number }) => void;
   registerApi: (api: MaskApi | null) => void;
 };
@@ -26,6 +26,7 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
   const hasPaint = useRef(false);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
+  const lasso = useRef<{ x: number; y: number }[]>([]);
 
   const notify = useCallback(() => {
     onSelectionChange({ hasPaint: hasPaint.current, points: points.current.length });
@@ -59,7 +60,39 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
       ctx.fillText(String(i + 1), p.x + r + unit * 0.6, p.y);
       ctx.restore();
     });
+
+    if (lasso.current.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = MARK;
+      ctx.lineWidth = unit * 0.4;
+      ctx.setLineDash([unit * 1.2, unit * 0.9]);
+      ctx.beginPath();
+      lasso.current.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.restore();
+    }
   }, []);
+
+  const fillLasso = useCallback(() => {
+    const pts = lasso.current;
+    lasso.current = [];
+    const paint = strokes.current;
+    const ctx = paint?.getContext("2d");
+    if (!paint || !ctx || pts.length < 3) {
+      repaint();
+      return;
+    }
+    ctx.save();
+    ctx.fillStyle = PAINT;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (!hasPaint.current) hasPaint.current = true;
+    repaint();
+    notify();
+  }, [repaint, notify]);
 
   useEffect(() => {
     const img = new Image();
@@ -91,6 +124,7 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
         const paint = strokes.current;
         if (paint) paint.getContext("2d")?.clearRect(0, 0, paint.width, paint.height);
         points.current = [];
+        lasso.current = [];
         hasPaint.current = false;
         repaint();
         notify();
@@ -171,19 +205,32 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
           e.currentTarget.setPointerCapture(e.pointerId);
           drawing.current = true;
           last.current = p;
+          if (mode === "lasso") {
+            lasso.current = [p];
+            repaint();
+            return;
+          }
           stroke(p, { x: p.x + 0.01, y: p.y });
         }}
         onPointerMove={(e) => {
           if (mode === "tap" || !drawing.current || !last.current) return;
           const p = pos(e);
+          if (mode === "lasso") {
+            lasso.current = [...lasso.current, p];
+            last.current = p;
+            repaint();
+            return;
+          }
           stroke(last.current, p);
           last.current = p;
         }}
         onPointerUp={() => {
+          if (mode === "lasso" && drawing.current) fillLasso();
           drawing.current = false;
           last.current = null;
         }}
         onPointerLeave={() => {
+          if (mode === "lasso" && drawing.current) fillLasso();
           drawing.current = false;
           last.current = null;
         }}

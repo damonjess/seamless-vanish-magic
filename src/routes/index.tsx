@@ -46,7 +46,7 @@ function Index() {
   const [src, setSrc] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [brush, setBrush] = useState(38);
-  const [mode, setMode] = useState<"brush" | "tap">("tap");
+  const [mode, setMode] = useState<"brush" | "tap" | "lasso">("tap");
   const [selection, setSelection] = useState({ hasPaint: false, points: 0 });
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);

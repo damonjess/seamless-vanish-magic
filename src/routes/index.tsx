@@ -179,27 +179,26 @@ function Index() {
             </div>
 
             <div className="rounded-3xl border border-border bg-card/70 p-5">
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-secondary p-1">
-                <button
-                  onClick={() => setMode("tap")}
-                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    mode === "tap"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <MousePointerClick className="size-4" /> Tap to remove
-                </button>
-                <button
-                  onClick={() => setMode("brush")}
-                  className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
-                    mode === "brush"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Brush className="size-4" /> Brush
-                </button>
+              <div className="grid grid-cols-3 gap-2 rounded-2xl bg-secondary p-1">
+                {(
+                  [
+                    { id: "tap", label: "Tap", Icon: MousePointerClick },
+                    { id: "brush", label: "Brush", Icon: Brush },
+                    { id: "lasso", label: "Lasso", Icon: Lasso },
+                  ] as const
+                ).map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setMode(id)}
+                    className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-sm font-medium transition-colors ${
+                      mode === id
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="size-4" /> {label}
+                  </button>
+                ))}
               </div>
 
               {mode === "tap" ? (

@@ -77,7 +77,11 @@ function Index() {
     const pair = apiRef.current?.exportPair();
     if (!pair || (!selection.hasPaint && selection.points === 0)) {
       toast.error(
-        mode === "tap" ? "Tap an object to remove first." : "Brush over what you want removed first.",
+        mode === "tap"
+          ? "Tap an object to remove first."
+          : mode === "lasso"
+            ? "Draw a loop around what you want removed first."
+            : "Brush over what you want removed first.",
       );
       return;
     }

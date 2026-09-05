@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 type Props = {
   src: string;
   brush: number;
-  mode: "brush" | "tap";
+  mode: "brush" | "tap" | "lasso";
   onSelectionChange: (state: { hasPaint: boolean; points: number }) => void;
   registerApi: (api: MaskApi | null) => void;
 };
@@ -26,6 +26,7 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
   const hasPaint = useRef(false);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
+  const lasso = useRef<{ x: number; y: number }[]>([]);
 
   const notify = useCallback(() => {
     onSelectionChange({ hasPaint: hasPaint.current, points: points.current.length });

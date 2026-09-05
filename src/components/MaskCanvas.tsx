@@ -124,6 +124,7 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
         const paint = strokes.current;
         if (paint) paint.getContext("2d")?.clearRect(0, 0, paint.width, paint.height);
         points.current = [];
+        lasso.current = [];
         hasPaint.current = false;
         repaint();
         notify();

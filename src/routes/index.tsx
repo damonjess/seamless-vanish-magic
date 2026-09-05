@@ -224,8 +224,7 @@ function Index() {
                     </Button>
                   )}
                 </>
-              ) : (
-
+              ) : mode === "brush" ? (
                 <>
                   <div className="mt-5 flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-medium text-foreground">
@@ -243,6 +242,16 @@ function Index() {
                   />
                   <p className="mt-3 text-xs text-muted-foreground">
                     Cover the whole object plus a little of its shadow for the cleanest result.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Lasso className="size-4 text-primary" /> Lasso select
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Draw a loop around the object with one continuous drag. Let go and the shape
+                    fills in — perfect for big or awkward areas.
                   </p>
                 </>
               )}

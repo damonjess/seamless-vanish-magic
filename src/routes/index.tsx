@@ -6,6 +6,7 @@ import {
   Download,
   Eraser,
   ImagePlus,
+  Lasso,
   Loader2,
   MousePointerClick,
   RotateCcw,

@@ -204,19 +204,32 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
           e.currentTarget.setPointerCapture(e.pointerId);
           drawing.current = true;
           last.current = p;
+          if (mode === "lasso") {
+            lasso.current = [p];
+            repaint();
+            return;
+          }
           stroke(p, { x: p.x + 0.01, y: p.y });
         }}
         onPointerMove={(e) => {
           if (mode === "tap" || !drawing.current || !last.current) return;
           const p = pos(e);
+          if (mode === "lasso") {
+            lasso.current = [...lasso.current, p];
+            last.current = p;
+            repaint();
+            return;
+          }
           stroke(last.current, p);
           last.current = p;
         }}
         onPointerUp={() => {
+          if (mode === "lasso" && drawing.current) fillLasso();
           drawing.current = false;
           last.current = null;
         }}
         onPointerLeave={() => {
+          if (mode === "lasso" && drawing.current) fillLasso();
           drawing.current = false;
           last.current = null;
         }}

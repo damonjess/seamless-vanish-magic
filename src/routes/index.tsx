@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useRef, useState } from "react";
 import {
   Brush,
@@ -52,7 +51,6 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const apiRef = useRef<MaskApi | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const run = useServerFn(removeObject);
 
   const registerApi = useCallback((api: MaskApi | null) => {
     apiRef.current = api;
@@ -87,8 +85,10 @@ function Index() {
     }
     setBusy(true);
     try {
-      const result = await run({
-        data: { ...pair, points: selection.points, hasPaint: selection.hasPaint },
+      const result = await removeObject({
+        ...pair,
+        points: selection.points,
+        hasPaint: selection.hasPaint,
       });
       setHistory((h) => (src ? [...h, src] : h));
       setSrc(result.image);

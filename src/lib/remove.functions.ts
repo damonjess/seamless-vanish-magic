@@ -13,24 +13,31 @@ const schema = z.object({
 
 export type RemoveObjectInput = z.infer<typeof schema>;
 
+/** Extract raw base64 data (strip the data: prefix) */
+function stripDataUrl(url: string): { data: string; mimeType: string } {
+  const match = url.match(/^data:(image\/[\w+]+);base64,(.+)$/);
+  if (!match) throw new Error("Invalid image data URL.");
+  return { data: match[2], mimeType: match[1] };
+}
+
 /**
- * Client-side object removal.
+ * Client-side object removal using Google Gemini API (free tier).
  *
- * Calls the Lovable AI gateway directly from the browser/WebView.
- * Requires VITE_LOVABLE_API_KEY to be set at build time (in .env).
+ * Uses the gemini-2.5-flash-image model (Nano Banana) which supports
+ * image editing / inpainting. Free tier allows ~500 requests/day.
  *
- * NOTE: The API key is embedded in the APK. For production use, consider
- * routing through a backend proxy instead.
+ * Requires VITE_GEMINI_API_KEY to be set at build time (in .env).
+ * Get a free key at https://aistudio.google.com/apikey
  */
 export async function removeObject(
   data: RemoveObjectInput,
 ): Promise<{ image: string }> {
   const parsed = schema.parse(data);
 
-  const apiKey = import.meta.env.VITE_LOVABLE_API_KEY;
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "AI is not configured. Set VITE_LOVABLE_API_KEY in your .env file before building.",
+      "AI is not configured. Set VITE_GEMINI_API_KEY in your .env file. Get a free key at https://aistudio.google.com/apikey",
     );
   }
 
@@ -56,44 +63,69 @@ export async function removeObject(
     "Return only the final edited photograph.",
   ].join(" ");
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/images/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-3-pro-image",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: parsed.image } },
-            { type: "image_url", image_url: { url: parsed.marked } },
-          ],
+  const original = stripDataUrl(parsed.image);
+  const marked = stripDataUrl(parsed.marked);
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: original.mimeType, data: original.data } },
+              { inline_data: { mime_type: marked.mimeType, data: marked.data } },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
         },
-      ],
-      modalities: ["image", "text"],
-    }),
-  });
+      }),
+    },
+  );
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     if (res.status === 429)
       throw new Error("Rate limit reached. Please try again in a moment.");
-    if (res.status === 402)
-      throw new Error("AI credits are exhausted for this workspace.");
+    if (res.status === 403)
+      throw new Error("API key invalid or billing not enabled for image generation.");
     throw new Error(`Removal failed (${res.status}). ${detail.slice(0, 200)}`);
   }
 
   const payload = (await res.json()) as {
-    data?: Array<{ b64_json?: string }>;
+    candidates?: Array<{
+      content?: {
+        parts?: Array<
+          | { text?: string }
+          | { inlineData?: { mimeType?: string; data?: string } }
+          | { inline_data?: { mime_type?: string; data?: string } }
+        >;
+      };
+    }>;
     error?: { message?: string };
   };
-  const b64 = payload.data?.[0]?.b64_json;
-  if (!b64)
-    throw new Error(payload.error?.message ?? "The model did not return an image.");
 
-  return { image: `data:image/png;base64,${b64}` };
+  const parts = payload.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = parts.find(
+    (p): p is { inlineData?: { mimeType?: string; data?: string } } =>
+      "inlineData" in p || "inline_data" in p,
+  );
+
+  const inlineData = imagePart?.inlineData ?? (imagePart as any)?.inline_data;
+  const b64 = inlineData?.data;
+
+  if (!b64) {
+    throw new Error(
+      payload.error?.message ?? "The model did not return an image. Please try again.",
+    );
+  }
+
+  const mimeType = inlineData?.mimeType ?? (imagePart as any)?.inline_data?.mime_type ?? "image/png";
+
+  return { image: `data:${mimeType};base64,${b64}` };
 }

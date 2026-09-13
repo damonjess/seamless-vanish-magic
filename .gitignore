@@ -16,6 +16,18 @@ dist-ssr
 .nitro
 *.local
 
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Local SDK configuration
+local.properties
+
+# Gradle & Build outputs
+.gradle/
+build/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

@@ -20,17 +20,56 @@ function stripDataUrl(url: string): { data: string; mimeType: string } {
   return { data: match[2], mimeType: match[1] };
 }
 
+const IMAGE_MODELS = [
+  "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image",
+  "gemini-3.1-flash-lite-image",
+  "gemini-3-pro-image",
+];
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+function parseRetryDelayMs(payload: any, headers: Headers): number {
+  const details = payload?.error?.details;
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      if (d?.retryDelay) {
+        const sec = parseFloat(String(d.retryDelay).replace("s", ""));
+        if (!isNaN(sec) && sec > 0) return Math.ceil(sec * 1000);
+      }
+    }
+  }
+
+  const msg = payload?.error?.message ?? "";
+  const match = msg.match(/retry in ([0-9.]+)\s*s/i);
+  if (match) {
+    const sec = parseFloat(match[1]);
+    if (!isNaN(sec) && sec > 0) return Math.ceil(sec * 1000);
+  }
+
+  const header = headers.get("Retry-After");
+  if (header) {
+    const sec = parseInt(header, 10);
+    if (!isNaN(sec) && sec > 0) return sec * 1000;
+  }
+
+  return 10000;
+}
+
+function isZeroQuotaError(payload: any): boolean {
+  const msg = payload?.error?.message ?? "";
+  return msg.includes("limit: 0") || msg.includes("limit: 0,");
+}
+
 /**
- * Client-side object removal using Google Gemini API (free tier).
+ * Client-side object removal using Google Gemini API.
  *
- * Uses the gemini-2.5-flash-image model (Nano Banana) which supports
- * image editing / inpainting. Free tier allows ~500 requests/day.
- *
- * Requires VITE_GEMINI_API_KEY to be set at build time (in .env).
- * Get a free key at https://aistudio.google.com/apikey
+ * Uses Gemini image editing models (Nano Banana) with automatic
+ * retries and countdown timers for rate limits (429).
  */
 export async function removeObject(
   data: RemoveObjectInput,
+  onStatusUpdate?: (status: string) => void,
 ): Promise<{ image: string }> {
   const parsed = schema.parse(data);
 
@@ -66,66 +105,121 @@ export async function removeObject(
   const original = stripDataUrl(parsed.image);
   const marked = stripDataUrl(parsed.marked);
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
+  let lastHumanError = "";
+
+  for (const model of IMAGE_MODELS) {
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
           {
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: original.mimeType, data: original.data } },
-              { inline_data: { mime_type: marked.mimeType, data: marked.data } },
-            ],
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    { inline_data: { mime_type: original.mimeType, data: original.data } },
+                    { inline_data: { mime_type: marked.mimeType, data: marked.data } },
+                  ],
+                },
+              ],
+              generationConfig: {
+                responseModalities: ["TEXT", "IMAGE"],
+              },
+            }),
           },
-        ],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      }),
-    },
-  );
+        );
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    if (res.status === 429)
-      throw new Error("Rate limit reached. Please try again in a moment.");
-    if (res.status === 403)
-      throw new Error("API key invalid or billing not enabled for image generation.");
-    throw new Error(`Removal failed (${res.status}). ${detail.slice(0, 200)}`);
+        let payload: any = null;
+        try {
+          payload = await res.json();
+        } catch {
+          // Non-JSON response
+        }
+
+        if (res.ok && payload) {
+          const parts = payload.candidates?.[0]?.content?.parts ?? [];
+          const imagePart = parts.find(
+            (p: any) => "inlineData" in p || "inline_data" in p,
+          );
+
+          const inlineData = imagePart?.inlineData ?? imagePart?.inline_data;
+          const b64 = inlineData?.data;
+
+          if (b64) {
+            const mimeType = inlineData?.mimeType ?? "image/jpeg";
+            return { image: `data:${mimeType};base64,${b64}` };
+          }
+
+          if (payload.error?.message) {
+            lastHumanError = payload.error.message;
+          }
+        } else {
+          if (res.status === 403) {
+            throw new Error(
+              "API key invalid or billing not enabled for image generation.",
+            );
+          }
+
+          if (
+            payload?.error?.message?.includes("not available in your country")
+          ) {
+            throw new Error(
+              "Google AI Studio image generation (Nano Banana) is not supported in your country/region by Google. Turn on a US VPN to use it.",
+            );
+          }
+
+          if (res.status === 404) {
+            // Skip unavailable model
+            break;
+          }
+
+          if (res.status === 429) {
+            if (isZeroQuotaError(payload)) {
+              throw new Error(
+                "Image generation quota is set to 0 on this Google AI Studio project. Enable Pay-As-You-Go billing or create an API key in a project with image generation quota enabled.",
+              );
+            }
+
+            const delayMs = parseRetryDelayMs(payload, res.headers);
+            const totalSec = Math.ceil(delayMs / 1000);
+
+            for (let sec = totalSec; sec > 0; sec--) {
+              onStatusUpdate?.(
+                `Rate limit reached on free tier. Retrying automatically in ${sec}s…`,
+              );
+              await sleep(1000);
+            }
+            continue;
+          }
+
+          if (res.status >= 500) {
+            onStatusUpdate?.("AI service busy, retrying in a moment…");
+            await sleep(3000);
+            continue;
+          }
+
+          if (payload?.error?.message) {
+            lastHumanError = payload.error.message;
+          }
+        }
+      } catch (err: any) {
+        if (
+          err.message?.includes("API key invalid") ||
+          err.message?.includes("Quota") ||
+          err.message?.includes("quota")
+        ) {
+          throw err;
+        }
+      }
+    }
   }
 
-  const payload = (await res.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<
-          | { text?: string }
-          | { inlineData?: { mimeType?: string; data?: string } }
-          | { inline_data?: { mime_type?: string; data?: string } }
-        >;
-      };
-    }>;
-    error?: { message?: string };
-  };
-
-  const parts = payload.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = parts.find(
-    (p): p is { inlineData?: { mimeType?: string; data?: string } } =>
-      "inlineData" in p || "inline_data" in p,
+  throw new Error(
+    lastHumanError ||
+      "Rate limit reached on Gemini free tier. Please wait 20–30 seconds and try again.",
   );
-
-  const inlineData = imagePart?.inlineData ?? (imagePart as any)?.inline_data;
-  const b64 = inlineData?.data;
-
-  if (!b64) {
-    throw new Error(
-      payload.error?.message ?? "The model did not return an image. Please try again.",
-    );
-  }
-
-  const mimeType = inlineData?.mimeType ?? (imagePart as any)?.inline_data?.mime_type ?? "image/png";
-
-  return { image: `data:${mimeType};base64,${b64}` };
 }

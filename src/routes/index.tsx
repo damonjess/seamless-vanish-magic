@@ -49,6 +49,7 @@ function Index() {
   const [mode, setMode] = useState<"brush" | "tap" | "lasso">("tap");
   const [selection, setSelection] = useState({ hasPaint: false, points: 0 });
   const [busy, setBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("Rebuilding the background…");
   const apiRef = useRef<MaskApi | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -84,12 +85,16 @@ function Index() {
       return;
     }
     setBusy(true);
+    setStatusMessage("Rebuilding the background…");
     try {
-      const result = await removeObject({
-        ...pair,
-        points: selection.points,
-        hasPaint: selection.hasPaint,
-      });
+      const result = await removeObject(
+        {
+          ...pair,
+          points: selection.points,
+          hasPaint: selection.hasPaint,
+        },
+        (status) => setStatusMessage(status),
+      );
       setHistory((h) => (src ? [...h, src] : h));
       setSrc(result.image);
       setSelection({ hasPaint: false, points: 0 });
@@ -175,9 +180,9 @@ function Index() {
 
 
                 {busy && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-background/70 backdrop-blur-sm">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-background/80 backdrop-blur-sm p-4 text-center">
                     <Loader2 className="size-7 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Rebuilding the background…</p>
+                    <p className="text-sm font-medium text-foreground">{statusMessage}</p>
                   </div>
                 )}
               </div>

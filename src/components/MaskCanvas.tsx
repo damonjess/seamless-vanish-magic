@@ -146,8 +146,8 @@ export function MaskCanvas({ src, brush, mode, onSelectionChange, registerApi }:
         ctx.drawImage(base, 0, 0);
         ctx.drawImage(mask, 0, 0);
         return {
-          image: base.toDataURL("image/png"),
-          marked: merged.toDataURL("image/png"),
+          image: base.toDataURL("image/jpeg", 0.88),
+          marked: merged.toDataURL("image/jpeg", 0.88),
         };
       },
     };
